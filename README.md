@@ -1,2 +1,2 @@
 # esphome_guides
-drafts
+proposed guides
