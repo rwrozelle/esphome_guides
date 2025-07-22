@@ -58,7 +58,7 @@ class MediaPlayerInfo(EntityInfo):
             
             return flag
 
-        return feature_flags
+        return self.feature_flags
 ```
 ## esphome/aioesphomeapi/aioesphomeapi/api.proto
 Update the ListEntities<Component>Response to include the new attribute, for example in ListEntitiesMediaPlayerResponse,
@@ -103,9 +103,10 @@ def test_media_player_feature_flags_compat() -> None:
                            sample_bytes=2,
                        )
                    ],
-                   feature_flags=0,
+                   #PLAY_MEDIA,BROWSE_MEDIA,STOP,VOLUME_SET,VOLUME_MUTE,MEDIA_ANNOUNCE
+                   feature_flags=1184268,
                )
-    assert info.supported_color_modes_compat(APIVersion(2, 2)) == info.supported_color_modes_compat(APIVersion(2, 3))
+    assert info.feature_flags_compat(APIVersion(2, 2)) == info.feature_flags_compat(APIVersion(2, 3))
 ```
 ## esphome/esphome/components/api/api.proto
 Update the ListEntities<Component>Response to include the new attribute, for example in ListEntitiesMediaPlayerResponse,
