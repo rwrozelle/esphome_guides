@@ -5,14 +5,60 @@ feature_flags attribute is defined in the <Component>Info rather than individual
 Discussion below is based on adding feature_flags without attempting to deprecate existing supports_* attributes.
 
 ## esphome/aioesphomeapi/aioesphomeapi/model.py
-Note:  MediaPlayerEntityFeature is defined in home-assistant/core/homeassistant/components/media_player/const.py otherwise
-it would make sense to define in model.py
+Add the bitshift enumeration for the Features, for example for MediaPlayer, Note: MediaPlayerEntityFeature is originally
+defined in home-assistant/core/homeassistant/components/media_player/const.py
+```
+class MediaPlayerEntityFeature(IntFlag):
+    """Supported features of the media player entity."""
 
-Add the feature_flags attribute to the <Component>Info, for example:
+    PAUSE = 1
+    SEEK = 2
+    VOLUME_SET = 4
+    VOLUME_MUTE = 8
+    PREVIOUS_TRACK = 16
+    NEXT_TRACK = 32
+
+    TURN_ON = 128
+    TURN_OFF = 256
+    PLAY_MEDIA = 512
+    VOLUME_STEP = 1024
+    SELECT_SOURCE = 2048
+    STOP = 4096
+    CLEAR_PLAYLIST = 8192
+    PLAY = 16384
+    SHUFFLE_SET = 32768
+    SELECT_SOUND_MODE = 65536
+    BROWSE_MEDIA = 131072
+    REPEAT_SET = 262144
+    GROUPING = 524288
+    MEDIA_ANNOUNCE = 1048576
+    MEDIA_ENQUEUE = 2097152
+    SEARCH_MEDIA = 4194304
+```
+
+Add the feature_flags attribute to the <Component>Info and add a compatability method,
+Note: the APIVersion must be the current APIVersion at the time of merge into development, so APIVersion(2,3) must be updated to correct values.
 ```
 class MediaPlayerInfo(EntityInfo):
     ...
     feature_flags: int = 0
+
+    def feature_flags_compat(self, api_version: APIVersion) -> int
+        if api_version < APIVersion(2, 3):
+            flags = (
+                MediaPlayerEntityFeature.PLAY_MEDIA
+                | MediaPlayerEntityFeature.BROWSE_MEDIA
+                | MediaPlayerEntityFeature.STOP
+                | MediaPlayerEntityFeature.VOLUME_SET
+                | MediaPlayerEntityFeature.VOLUME_MUTE
+                | MediaPlayerEntityFeature.MEDIA_ANNOUNCE
+            )
+            if self.supports_pause:
+                flags |= MediaPlayerEntityFeature.PAUSE | MediaPlayerEntityFeature.PLAY
+            
+            return flag
+
+        return feature_flags
 ```
 ## esphome/aioesphomeapi/aioesphomeapi/api.proto
 Update the ListEntities<Component>Response to include the new attribute, for example in ListEntitiesMediaPlayerResponse,
@@ -42,6 +88,25 @@ def test_media_player_supported_format_convert_list() -> None:
         feature_flags=0,
     )
 ```
+Add a new test to make sure that compatibility function works before and after implementation
+```
+def test_media_player_feature_flags_compat() -> None:
+    """Test feature flags works for before and after APIVersion implementation"""
+    info = MediaPlayerInfo(
+                   supports_pause=False,
+                   supported_formats=[
+                       MediaPlayerSupportedFormat(
+                           format="flac",
+                           sample_rate=48000,
+                           num_channels=2,
+                           purpose=1,
+                           sample_bytes=2,
+                       )
+                   ],
+                   feature_flags=0,
+               )
+    assert info.supported_color_modes_compat(APIVersion(2, 2)) == info.supported_color_modes_compat(APIVersion(2, 3))
+```
 ## esphome/esphome/components/api/api.proto
 Update the ListEntities<Component>Response to include the new attribute, for example in ListEntitiesMediaPlayerResponse,
 the next available attribute number is 11:
@@ -70,7 +135,7 @@ Add the <Component>Feature enumeration, for example in esphome/esphome/component
 For the MediaPlayer Component, using the HA media_player component as a guide, see
 home-assistant/core/homeassistant/components/media_player/const.py
 ```
-enum MediaPlayerFeature : uint32_t {
+enum MediaPlayerEntityFeature : uint32_t {
   PAUSE = 1,
   SEEK = 2,
   VOLUME_SET = 4,
@@ -109,7 +174,7 @@ class MediaPlayerTraits {
       | MediaPlayerEntityFeature.VOLUME_SET
       | MediaPlayerEntityFeature.VOLUME_MUTE
       | MediaPlayerEntityFeature.MEDIA_ANNOUNCE
-    if (this->supports_pause_) {
+    if (this->get_supports_pause()) {
       flags |= MediaPlayerEntityFeature.PAUSE | MediaPlayerEntityFeature.PLAY
     }
     return flags;
@@ -118,29 +183,29 @@ class MediaPlayerTraits {
 };
 ```
 ## home-assistant/core/homeassistant/components/esphome/<component>.py
-Update the _on_static_info_update to use feature_flag if it is available
+Update the _on_static_info_update to use method feature_flags_compat
 ```
 def _on_static_info_update(self, static_info: EntityInfo) -> None:
         """Set attrs from static info."""
         super()._on_static_info_update(static_info)
-        flags = 0
-        if self._static_info.feature_flags:
-            flags |= self._static_info.feature_flags
-        else:
-            flags |= (
-                MediaPlayerEntityFeature.PLAY_MEDIA
-                | MediaPlayerEntityFeature.BROWSE_MEDIA
-                | MediaPlayerEntityFeature.STOP
-                | MediaPlayerEntityFeature.VOLUME_SET
-                | MediaPlayerEntityFeature.VOLUME_MUTE
-                | MediaPlayerEntityFeature.MEDIA_ANNOUNCE
-            )
-            if self._static_info.supports_pause:
-                flags |= MediaPlayerEntityFeature.PAUSE | MediaPlayerEntityFeature.PLAY
-        self._attr_supported_features = flags
+        self._attr_supported_features = self._static_info.feature_flags_compat(self._api_version)
         self._entry_data.media_player_formats[self.unique_id] = cast(
             MediaPlayerInfo, static_info
         ).supported_formats
 ```
+## home-assistant/core/tests/components/esphome/test_<component>.py
 
-
+Update Tests as needed, for MediaPlayer anytime the supports_pause is set, also set
+the feature_flags to the correct value, below is one example but there are 4 changes needed for MediaPlayer
+```
+...
+        MediaPlayerInfo(
+            object_id="mymedia_player",
+            key=1,
+            name="my media_player",
+            supports_pause=True,
+            #PLAY_MEDIA,BROWSE_MEDIA,STOP,VOLUME_SET,VOLUME_MUTE,MEDIA_ANNOUNCE,PAUSE,PLAY
+            feature_flags=1200653,
+        )
+...
+```
