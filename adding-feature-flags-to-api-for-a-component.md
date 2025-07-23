@@ -8,7 +8,7 @@ Discussion below is based on adding feature_flags without attempting to deprecat
 Add the bitshift enumeration for the Features, for example for MediaPlayer, Note: MediaPlayerEntityFeature is originally
 defined in home-assistant/core/homeassistant/components/media_player/const.py
 ```
-class MediaPlayerEntityFeature(IntFlag):
+class MediaPlayerEntityFeature(enum.IntFlag):
     """Supported features of the media player entity."""
 
     PAUSE = 1
@@ -35,11 +35,14 @@ class MediaPlayerEntityFeature(IntFlag):
     MEDIA_ENQUEUE = 2097152
     SEARCH_MEDIA = 4194304
 ```
-
+Update supports_* attributes to be deprecated.
 Add the feature_flags attribute to the <Component>Info and add a compatability method,
 Note: the APIVersion must be the current APIVersion at the time of merge into development, so APIVersion(2,3) must be updated to correct values.
 ```
 class MediaPlayerInfo(EntityInfo):
+    ...
+    // Deprecated in API version 2.3
+    bool supports_pause = 8 [deprecated=true];
     ...
     feature_flags: int = 0
 
@@ -56,17 +59,21 @@ class MediaPlayerInfo(EntityInfo):
             if self.supports_pause:
                 flags |= MediaPlayerEntityFeature.PAUSE | MediaPlayerEntityFeature.PLAY
             
-            return flag
+            return flags
 
         return self.feature_flags
 ```
 ## esphome/aioesphomeapi/aioesphomeapi/api.proto
+Update supports_* attributes to be deprecated.
 Update the ListEntities<Component>Response to include the new attribute, for example in ListEntitiesMediaPlayerResponse,
 the next available attribute number is 11:
 
 ```
 message ListEntitiesMediaPlayerResponse {
   option (id) = 63;
+  ...
+  // Deprecated in API version 2.3
+  bool supports_pause = 8 [deprecated=true];
   ...
   uint32 feature_flags = 11;
 }
@@ -109,12 +116,13 @@ def test_media_player_feature_flags_compat() -> None:
     assert info.feature_flags_compat(APIVersion(2, 2)) == info.feature_flags_compat(APIVersion(2, 3))
 ```
 ## esphome/esphome/components/api/api.proto
-Update the ListEntities<Component>Response to include the new attribute, for example in ListEntitiesMediaPlayerResponse,
-the next available attribute number is 11:
-
+Make identical changes to esphome/aioesphomeapi/aioesphomeapi/api.proto
 ```
 message ListEntitiesMediaPlayerResponse {
   option (id) = 63;
+  ...
+  // Deprecated in API version 2.3
+  bool supports_pause = 8 [deprecated=true];
   ...
   uint32 feature_flags = 11;
 }
